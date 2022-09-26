@@ -40,11 +40,12 @@ public class Aime {
     public static Connection connectGeneralPostGres(String host, int port, String database,
             String user, String pass) throws ClassNotFoundException, SQLException {
         Class.forName("org.postgresql.Driver");
-        return DriverManager.getConnection(
+        Connection con = DriverManager.getConnection(
                 "jdbc:postgresql://" + host + ":" + port
                 + "/" + database,
                 user, pass);
-
+        con.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+        return con;
     }
 
     public static Connection defautConnect()
