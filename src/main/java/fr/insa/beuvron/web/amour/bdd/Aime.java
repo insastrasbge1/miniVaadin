@@ -30,6 +30,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -37,8 +39,10 @@ import java.util.Optional;
  */
 public class Aime {
 
-    public static Connection connectGeneralPostGres(String host, int port, String database,
-            String user, String pass) throws ClassNotFoundException, SQLException {
+    public static Connection connectGeneralPostGres(String host,
+            int port, String database,
+            String user, String pass)
+            throws ClassNotFoundException, SQLException {
         Class.forName("org.postgresql.Driver");
         Connection con = DriverManager.getConnection(
                 "jdbc:postgresql://" + host + ":" + port
@@ -65,7 +69,13 @@ public class Aime {
                     create table utilisateur (
                         id integer not null primary key
                         generated always as identity,
-                        nom varchar(30) not null,
+                    -- ceci est un exemple de commentaire SQL :
+                    -- un commentaire commence par deux tirets,
+                    -- et fini à la fin de la ligne
+                    -- cela me permet de signaler que le petit mot clé
+                    -- unique ci-dessous interdit deux valeurs semblables
+                    -- dans la colonne des noms.
+                        nom varchar(30) not null unique,
                         pass varchar(30) not null
                     )
                     """);
@@ -103,6 +113,10 @@ public class Aime {
             // puis je renvoie l'exeption pour qu'elle puisse éventuellement
             // être gérée (message à l'utilisateur...)
             throw ex;
+        } finally {
+            // je reviens à la gestion par défaut : une transaction pour
+            // chaque ordre SQL
+            con.setAutoCommit(true);
         }
     }
 
@@ -120,6 +134,7 @@ public class Aime {
                     alter table aime
                         drop constraint fk_aime_u1
                              """);
+                System.out.println("constraint fk_aime_u1 dropped");
             } catch (SQLException ex) {
                 // nothing to do : maybe the constraint was not created
             }
@@ -129,6 +144,7 @@ public class Aime {
                     alter table aime
                         drop constraint fk_aime_u2
                     """);
+                System.out.println("constraint fk_aime_u2 dropped");
             } catch (SQLException ex) {
                 // nothing to do : maybe the constraint was not created
             }
@@ -138,8 +154,7 @@ public class Aime {
                         """
                     drop table aime
                     """);
-                // je defini les liens entre les clés externes et les clés primaires
-                // correspondantes
+                System.out.println("dable aime dropped");
             } catch (SQLException ex) {
                 // nothing to do : maybe the table was not created
             }
@@ -148,6 +163,7 @@ public class Aime {
                         """
                     drop table utilisateur
                     """);
+                System.out.println("table utilisateur dropped");
             } catch (SQLException ex) {
                 // nothing to do : maybe the table was not created
             }
@@ -238,6 +254,22 @@ public class Aime {
 
     }
 
+    // Je veux explicitement gérer le fait que deux utilisateurs ne peuvent pas
+    // avoir le même nom. 
+    // Comme j'ai indiqué la colonne comme 'unique' au niveau de la définition
+    // de la table, le SGBD interdira de toute façon deux utilisateurs de même
+    // nom : un SQLException sera générée dans ce cas.
+    // Mais si ce cas correspond à quelque chose que l'on veut gérer spécifiquement,
+    // (par exemple : permeetra à un nouvel utilisateur de se créer avec le nom
+    // de son choix, mais doir recevoir un message d'erreur s'il choisi un nom
+    // qui existe déjà.
+    // Utiliser le SQLException de base risque d'être difficile : il faudrait
+    // s'assurer que l'exception correspond bien à ce cas particulier.
+    // on choisi donc de créer une exception spécifique
+    public static class NomExisteDejaException extends Exception {
+    }
+
+    // 
     // lors de la création d'un utilisateur, l'identificateur est automatiquement
     // créé par le SGBD.
     // on va souvent avoir besoin de cet identificateur dans le programme,
@@ -245,27 +277,44 @@ public class Aime {
     // vous trouverez ci-dessous la façon de récupérer les identificateurs
     // créés : ils se présentent comme un ResultSet particulier.
     public static int createUtilisateur(Connection con, String nom, String pass)
-            throws SQLException {
-        // lors de la creation du PreparedStatement, il faut que je précise
-        // que je veux qu'il conserve les clés générées
-        try ( PreparedStatement pst = con.prepareStatement(
-                """
+            throws SQLException, NomExisteDejaException {
+        // je me place dans une transaction pour m'assurer que la séquence
+        // test du nom - création est bien atomique et isolée
+        con.setAutoCommit(false);
+        try ( PreparedStatement chercheNom = con.prepareStatement(
+                "select id from utilisateur where nom = ?")) {
+            chercheNom.setString(1, nom);
+            ResultSet testNom = chercheNom.executeQuery();
+            if (testNom.next()) {
+                throw new NomExisteDejaException();
+            }
+            // lors de la creation du PreparedStatement, il faut que je précise
+            // que je veux qu'il conserve les clés générées
+            try ( PreparedStatement pst = con.prepareStatement(
+                    """
                 insert into utilisateur (nom,pass) values (?,?)
                 """, PreparedStatement.RETURN_GENERATED_KEYS)) {
-            pst.setString(1, nom);
-            pst.setString(2, pass);
-            pst.executeUpdate();
+                pst.setString(1, nom);
+                pst.setString(2, pass);
+                pst.executeUpdate();
+                con.commit();
 
-            // je peux alors récupérer les clés créées comme un result set :
-            try ( ResultSet rid = pst.getGeneratedKeys()) {
-                // et comme ici je suis sur qu'il y a une et une seule clé, je
-                // fait un simple next 
-                rid.next();
-                // puis je récupère la valeur de la clé créé qui est dans la
-                // première colonne du ResultSet
-                int id = rid.getInt(1);
-                return id;
+                // je peux alors récupérer les clés créées comme un result set :
+                try ( ResultSet rid = pst.getGeneratedKeys()) {
+                    // et comme ici je suis sur qu'il y a une et une seule clé, je
+                    // fait un simple next 
+                    rid.next();
+                    // puis je récupère la valeur de la clé créé qui est dans la
+                    // première colonne du ResultSet
+                    int id = rid.getInt(1);
+                    return id;
+                }
             }
+        } catch (Exception ex) {
+            con.rollback();
+            throw ex;
+        } finally {
+            con.setAutoCommit(true);
         }
     }
 
@@ -450,16 +499,16 @@ public class Aime {
     }
 
     public static void demandeNouvelUtilisateur(Connection con) throws SQLException {
-        boolean ok = true;
-        while (ok) {
+        boolean existe = true;
+        while (existe) {
             System.out.println("--- creation nouvel utilisateur");
             String nom = ConsoleFdB.entreeString("nom :");
             String pass = ConsoleFdB.entreeString("pass :");
-            ok = nomUtilisateurExiste(con, nom);
-            if (ok) {
-                System.out.println("ce nom existe deja, choisissez en un autre");
-            } else {
+            try {
                 createUtilisateur(con, nom, pass);
+                existe = false;
+            } catch (NomExisteDejaException ex) {
+                System.out.println("ce nom existe deja, choisissez en un autre");
             }
         }
     }
@@ -482,10 +531,15 @@ public class Aime {
 //            System.out.println("pas de suppression d'un ancien schéma");
         }
         creeSchema(con);
+        System.out.println("Schema (re)-created");
         List<Integer> ids = new ArrayList<>();
-        ids.add(createUtilisateur(con, "toto", "p1"));
-        ids.add(createUtilisateur(con, "bob", "p2"));
-        ids.add(createUtilisateur(con, "bill", "p3"));
+        try {
+            ids.add(createUtilisateur(con, "toto", "p1"));
+            ids.add(createUtilisateur(con, "bob", "p2"));
+            ids.add(createUtilisateur(con, "bill", "p3"));
+        } catch (NomExisteDejaException ex) {
+            throw new Error(ex);
+        }
         // toto aime bob et bill
         createAime(con, ids.get(0), ids.get(1));
         createAime(con, ids.get(0), ids.get(2));
@@ -493,6 +547,7 @@ public class Aime {
         createAime(con, ids.get(1), ids.get(2));
         // bill aime toto
         createAime(con, ids.get(2), ids.get(1));
+        System.out.println("initial data added");
     }
 
     public static void menu(Connection con) {
@@ -526,9 +581,11 @@ public class Aime {
                         boolean exist = true;
                         while (exist) {
                             String nom = "U" + ((int) (Math.random() * 10000));
-                            if (!nomUtilisateurExiste(con, nom)) {
-                                exist = false;
+                            try{
                                 createUtilisateur(con, nom, "P" + ((int) (Math.random() * 10000)));
+                                exist = false;
+                            }
+                            catch (NomExisteDejaException ex) {
                             }
                         }
 
