@@ -37,9 +37,9 @@ import java.util.logging.Logger;
  * @author francois
  */
 public class NouvelUtilisateur extends FormLayout {
-    
+
     private VuePrincipale main;
-    
+
     private TextField vtNom;
     private PasswordField vtPass;
     private Button vbValidate;
@@ -54,23 +54,21 @@ public class NouvelUtilisateur extends FormLayout {
             String nom = this.vtNom.getValue();
             String pass = this.vtPass.getValue();
             try {
-                if (Aime.nomUtilisateurExiste(con, nom)) {
-                    Notification.show("Ce nom existe déjà, choississez en un autre");
-                } else {
-                    int id = Aime.createUtilisateur(con, nom,pass);
-                    Utilisateur curU = new Utilisateur(id, nom, pass);
-                    this.main.getSessionInfo().setCurUser(Optional.of(curU));
-                    Notification.show("Utilisateur " + nom + " créé");
-                    this.main.setMainContent(new MainAfterLogin(this.main));
-                    this.main.setEntete(new EnteteAfterLogin(this.main));
-                }
+
+                int id = Aime.createUtilisateur(con, nom, pass);
+                Utilisateur curU = new Utilisateur(id, nom, pass);
+                this.main.getSessionInfo().setCurUser(Optional.of(curU));
+                Notification.show("Utilisateur " + nom + " créé");
+                this.main.setMainContent(new MainAfterLogin(this.main));
+                this.main.setEntete(new EnteteAfterLogin(this.main));
+
+            } catch (Aime.NomExisteDejaException ex) {
+                Notification.show("Ce nom existe déjà, choississez en un autre");
             } catch (SQLException ex) {
                 Notification.show("Problème BdD : " + ex.getLocalizedMessage());
             }
         });
-        this.add(this.vtNom,this.vtPass,this.vbValidate);
+        this.add(this.vtNom, this.vtPass, this.vbValidate);
     }
-    
-    
-    
+
 }
