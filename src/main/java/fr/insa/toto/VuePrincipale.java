@@ -16,18 +16,38 @@
     You should have received a copy of the GNU General Public License
     along with CoursBeuvron.  If not, see <http://www.gnu.org/licenses/>.
  */
-package fr.insa.beuvron.web.amour.vues;
+package fr.insa.toto;
+
+import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.html.H1;
+import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.router.PageTitle;
+import com.vaadin.flow.router.Route;
 
 /**
- *
+ * vue principale.
+ * pour les composants vaadin, voir https://vaadin.com/docs/latest/ds/components
  * @author francois
  */
-public class ConfigGenerale {
+@Route(value = "")
+@PageTitle("miniVaadin")
+public class VuePrincipale extends VerticalLayout {
     
-        public static boolean ENCADRE_LAYOUT = false;
-        
-        public static boolean AFFICHE_PANNEAU_CONNEXION_BDD = true;
-        
-        public static boolean AFFICHE_RAZ_DATABASE = true;
+
+
+    public VuePrincipale() {
+        this.add(new H1("projet vaadin quasi vide"));
+        Button toDo = new Button("toDO");
+        toDo.addClickListener((event) -> {
+            Notification.show("Tout reste a faire");
+        });
+        this.add(toDo);
+
+
+    }
+
+    
+
 
 }
